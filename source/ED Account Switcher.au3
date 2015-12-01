@@ -6,22 +6,42 @@
 #include <array.au3>
 #include <file.au3>
 #include <GUIConstantsEx.au3>
+#include <ColorConstants.au3>
 #include <GuiComboBox.au3>
 
-Global $title = "E:D Account Switcher 1.0.0"
+Global $title = "E:D Account Switcher 1.0.2"
+Global $basename=stringleft(@ScriptName , StringInStr(@ScriptName , "." , 0, -1)-1)
+Global $sIniname=@scriptdir&'\'&$basename&".ini"
 
-$Form1 = GUICreate($title, 370, 135)
+Global $launcherDIR = "startup"
 
-$Group1 = GUICtrlCreateGroup("Switch Account", 5, 10, 360, 50)
-Global $Combo1 = GUICtrlCreateCombo("", 15, 30, 200, 25, BitOR($GUI_SS_DEFAULT_COMBO, $CBS_DROPDOWNLIST))
+#cs
+if not FileExists('EDlaunch.exe') Then
+	MsgBox(0,"Error","Put the "&@ScriptName&" in the same directory as the ED Launcher !",0,0)
+	Exit
+endif
+#ce
+
+; It's possible to minimize user envolvement even further by grabbing the path from the currently running launcher before closing it. This is done in the last function, down at the bottom.
+
+
+$Form1 = GUICreate($title, 370, 180)
+
+$Group1 = GUICtrlCreateGroup("Switch Account", 5, 5, 360, 50)
+Global $Combo1 = GUICtrlCreateCombo("", 15, 25, 200, 20, BitOR($GUI_SS_DEFAULT_COMBO, $CBS_DROPDOWNLIST))
 _GUICtrlComboBox_SetCueBanner($Combo1, "Choose Account")
 
-$apply = GUICtrlCreateButton("Apply", 260, 29, 80, 23)
+$apply = GUICtrlCreateButton("Launch / Apply", 255, 24, 90, 23)
 GUICtrlCreateGroup("", -99, -99, 1, 1)
 
-$Group2 = GUICtrlCreateGroup("Add Currently Active Account to DB", 5, 80, 360, 50)
-$makeNewAcc = GUICtrlCreateButton("Add New Account", 120, 100, 130, 23)
+$Group2 = GUICtrlCreateGroup("Add Currently Active Account to DB", 5, 70, 360, 45)
+$makeNewAcc = GUICtrlCreateButton("Add New Account", 120, 85, 130, 23)
 GUICtrlCreateGroup("", -99, -99, 1, 1)
+
+$Group3 = GUICtrlCreateGroup("EDLaunch Status", 5, 130, 360, 45)
+global $infotxt = GUICtrlCreateLabel("", 15, 149, 340, 16)
+GUICtrlCreateGroup("", -99, -99, 1, 1)
+
 GUISetState(@SW_SHOW)
 
 Global $aAccountsDataDB[1][8]
@@ -38,10 +58,37 @@ While 1
 		Case $makeNewAcc
 			_CurrentToDB()
 	EndSwitch
+
+	_checkEDLaunch()
 WEnd
 
 Func _SwitchToAccount($account)
+	local $dif = 0, $return
 	If $account = "" Then Return -1
+
+    If $launcherDIR <> "" Then ; Check if the EDlaunch process is running.
+		GUICtrlSetColor($infotxt, $COLOR_WHITE)
+		GUICtrlSetBkColor($infotxt, $COLOR_RED)
+		GUICtrlSetData($infotxt, " Stopping current EDlaunch...")
+		Sleep(1000)
+
+		; keep trying to close the launcher for 10 seconds in case it is frozen
+		local $begin = timerinit()
+		Do
+			ProcessClose("edlaunch.exe")
+			sleep(500)
+			$dif = timerdiff($begin)
+			if $dif >= 10000 Then
+				$return = MsgBox(49, $title, "Couldn't close the launcher, please do so manually.")
+				if $return = 2 Then
+					MsgBox(16, $title, "Cannot continue. Exiting.")
+					Exit
+				EndIf
+			EndIf
+		until not processexists("edlaunch.exe")
+
+		Sleep(1000)
+    EndIf
 
 	Local $hFile = FileOpen($aAccountsDataDB[0][0], 0)
 	Local $content = FileRead($hFile)
@@ -98,6 +145,56 @@ Func _SwitchToAccount($account)
 	Local $hFile = FileOpen($aAccountsDataDB[0][0], 2)
 	FileWrite($hFile, $content)
 	FileClose($hFile)
+
+    ; Start the ED launcher program.		If it was found to be running previously.
+	if fileexists($launcherDIR) Then
+		GUICtrlSetState($apply, $GUI_DISABLE)
+		GUICtrlSetColor($infotxt, $COLOR_WHITE)
+		GUICtrlSetBkColor($infotxt, $COLOR_BLUE)
+		GUICtrlSetData ($infotxt, " Starting EDlauncher... takes a moment... ")
+		Run($launcherDIR)
+
+		; WinWaitActive() alone won't work on some systems as the launcher window might pop up inactive behind the E:D Account Switcher window
+		; "Dangerous" might eventually change to "Horizons" or something else entirely, so I think it's better to only search the title for "Elite" and "Launcher" but make sure the window class also matches.
+
+		$dif = 0 ; was declared local above, just need to zero it just to make sure
+		$return = "" ; same here
+		$begin = timerinit(); also was declared above and only needs to be reinitialized
+		Do
+			sleep(100)
+			$dif = timerdiff($begin)
+			if $dif >= 10000 Then
+				$return = MsgBox(49, $title, "EDLauncher didn't start, please start it manually.")
+				if $return = 2 Then
+					MsgBox(16, $title, "Cannot continue. Exiting.")
+					Exit
+				EndIf
+			EndIf
+		until winexists("[REGEXPTITLE:(?si)Elite(.*?)Launcher; REGEXPCLASS:(?si)HwndWrapper(.*?)]", "") ; wait for the window to come up but don't care about whether or not it's active
+
+		$hWnd = wingethandle("[REGEXPTITLE:(?si)Elite(.*?)Launcher; REGEXPCLASS:(?si)HwndWrapper(.*?)]") ; grab the handle of the window...
+
+		$dif = 0
+		$begin = timerinit()
+		While 1 ; ... and wait for it to become responsive
+			$aRet = DLLCall('user32.dll', "bool", "IsHungAppWindow", "hwnd", $hWnd)
+			If @error Or $aRet[0] = 0 Then ExitLoop
+			sleep(100)
+			$dif = timerdiff($begin)
+			if $dif >= 10000 Then
+				MsgBox(16, $title, "EDLauncher started but didn't become responsive. Cannot continue. Exiting.")
+				Exit
+			EndIf
+		WEnd
+
+		GUICtrlSetBkColor($infotxt, $GUI_BKCOLOR_TRANSPARENT)
+		GUICtrlSetColor($infotxt, $COLOR_BLACK)
+		GUICtrlSetData ($infotxt, "")
+		GUICtrlSetState($apply, $GUI_ENABLE)
+	EndIf
+
+	$launcherDIR = "startup" ; the lazy way out...
+	_checkEDLaunch()
 EndFunc   ;==>_SwitchToAccount
 
 Func _SetCombo()
@@ -119,9 +216,7 @@ Func _SetCombo()
 EndFunc   ;==>_SetCombo
 
 Func _AccountsDataFromDB()
-	Local $sIniname = @ScriptDir & "\accounts.ini"
-
-	; assume new account DB if there are no saved accounts or accounts.ini was cleaned
+	; assume new account DB if there are no saved accounts or EDswitch.ini was cleaned
 	If Not FileExists($sIniname) Then Return 0
 	Local $aSectionnames = IniReadSectionNames($sIniname)
 	If Not IsArray($aSectionnames) Then Return 0
@@ -229,8 +324,6 @@ Func _CurrentToDB($startup = 0)
 
 	If $startup = 1 And MsgBox(36, $title, "Current E:D account not found in account switcher DB. Shall I add it?") = 7 Then Return 0
 
-	Local $sIniname = @ScriptDir & "\accounts.ini"
-
 	$sSectionName = InputBox($title, "Enter a name for your new account", "Account " & UBound($aAccountsDataDB))
 	If $sSectionName = "" Then
 		MsgBox(48, $title, "Account name must not be empty.")
@@ -296,3 +389,30 @@ Func _getMostCurrentUserConfigPath()
 	;_arraydisplay($aFiles, $idx)
 	Return $aFiles[$idx]
 EndFunc   ;==>_getMostCurrentUserConfigPath
+
+Func _ProcessGetLocation($iPID)
+	Local $aProc = DllCall('kernel32.dll', 'hwnd', 'OpenProcess', 'int', BitOR(0x0400, 0x0010), 'int', 0, 'int', $iPID)
+	If $aProc[0] = 0 Then Return SetError(1, 0, '')
+	Local $vStruct = DllStructCreate('int[1024]')
+	DllCall('psapi.dll', 'int', 'EnumProcessModules', 'hwnd', $aProc[0], 'ptr', DllStructGetPtr($vStruct), 'int', DllStructGetSize($vStruct), 'int_ptr', 0)
+	Local $aReturn = DllCall('psapi.dll', 'int', 'GetModuleFileNameEx', 'hwnd', $aProc[0], 'int', DllStructGetData($vStruct, 1), 'str', '', 'int', 2048)
+	If StringLen($aReturn[3]) = 0 Then Return SetError(2, 0, '')
+	Return $aReturn[3]
+EndFunc   ;==>_ProcessGetLocation
+
+Func _checkEDLaunch()
+	If ProcessExists("edlaunch.exe") and (($launcherDIR = "") or ($launcherDIR = "startup")) Then
+		$list = ProcessList("edlaunch.exe")
+		$launcherDIR = _ProcessGetLocation($list[1][1]) ; $launcherDIR then contains the full path to the launcher, including "edlaunch.exe"
+		GUICtrlSetColor($infotxt, $COLOR_WHITE)
+		GUICtrlSetBkColor($infotxt, $COLOR_BLUE)
+		GUICtrlSetData($infotxt, " EDlaunch found, running in launch mode")
+	EndIf
+
+	If not ProcessExists("edlaunch.exe") and ($launcherDIR <> "") Then
+		$launcherDIR = ""
+		GUICtrlSetColor($infotxt, $COLOR_WHITE)
+		GUICtrlSetBkColor($infotxt, $COLOR_BLUE)
+		GUICtrlSetData($infotxt, " EDlaunch NOT found, running in apply mode")
+	EndIf
+EndFunc

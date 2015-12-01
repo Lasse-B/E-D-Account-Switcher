@@ -1,0 +1,16 @@
+1.0.2 by Lasse-B
+
+- works in Launch or Apply mode, depending on whether or not EDLaunch is running
+- moved the info messages to them bottom of the window and gave them their own sections
+- removed the requirement to be in the same folder as EDLauncher but can still start EDLaunch if it was running when Account Switcher came up
+
+
+
+1.0.1 by HandH111
+
+- Replaced the apply with a launch button
+- Added a label for some informative messages during launch
+- when launching, stop existing EDlaunch first, then apply change, and start EDlaunch
+- uses the same name as the script for the ini file name instead of the accounts.ini
+
+Only requirement is to put the exe or au3 file in the EDlauncher directory

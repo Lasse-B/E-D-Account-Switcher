@@ -1,6 +1,6 @@
 v1.0.0
 
-If you have multiple Elite: Dangerous you probably know this too well:
+If you have multiple Elite: Dangerous accounts you probably know this too well:
 - open the launcher and log in using another set of login credentials
 - firing up your email client waiting for the verification code
 - pasting the verification code into the launcher
