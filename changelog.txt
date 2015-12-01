@@ -6,7 +6,7 @@
 
 
 
-1.0.1 by HandH111
+1.0.1 by HansH111
 
 - Replaced the apply with a launch button
 - Added a label for some informative messages during launch
