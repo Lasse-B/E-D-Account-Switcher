@@ -2,6 +2,7 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Icon=arrows.ico
 #AutoIt3Wrapper_Compression=4
+#AutoIt3Wrapper_Res_Fileversion=1.0.2
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 #include <array.au3>
 #include <file.au3>
